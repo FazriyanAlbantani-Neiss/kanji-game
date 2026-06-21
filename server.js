@@ -7,12 +7,18 @@ const express = require('express');
 const http = require('http');
 const path = require('path');
 const { Server } = require('socket.io');
+const cors = require('cors');
 
 const Room = require('./game/Room');
 const { loadQuestions } = require('./game/questionLoader');
 
+const { updateLeaderboard, getLeaderboard } = require('./game/leaderboard');
+
 const PORT = process.env.PORT || 3000;
 const app = express();
+
+app.use(cors({ origin: '*' }));
+
 const server = http.createServer(app);
 const io = new Server(server, { 
   cors: { 
@@ -34,6 +40,10 @@ app.get('/api/rooms', (_req, res) => {
   res.json(getAvailableRooms());
 });
 
+app.get('/api/leaderboard', (_req, res) => {
+  res.json(getLeaderboard());
+});
+
 function getAvailableRooms() {
   const list = [];
   for (const [code, room] of rooms.entries()) {
@@ -52,6 +62,151 @@ function getAvailableRooms() {
 }
 
 const rooms = new Map();
+
+// --- BOT MANAGER ---
+const BOT_NAMES = ['Hiroshi', 'Sakura', 'Kenji', 'Yuki', 'Takeshi', 'Akira', 'Mei', 'Ryota', 'Sora', 'Kaito', 'Rin', 'Ren'];
+
+function createBot(botType = 'random') {
+  let skill, type;
+  const rand = Math.random();
+
+  if (botType === 'random') {
+    if (rand < 0.25) type = 'hoster';       // Suka bikin room
+    else if (rand < 0.5) type = 'joiner';   // Suka gabung ke room orang
+    else if (rand < 0.75) type = 'master';  // Jago jawab
+    else type = 'noob';                     // Sering salah jawab
+  } else {
+    type = botType;
+  }
+
+  if (type === 'master') skill = 0.85 + Math.random() * 0.15; // 85% - 100%
+  else if (type === 'noob') skill = 0.2 + Math.random() * 0.2; // 20% - 40%
+  else skill = 0.4 + Math.random() * 0.4; // normal: 40% - 80%
+
+  return {
+    id: 'BOT_' + Math.random().toString(36).substr(2, 9),
+    name: BOT_NAMES[Math.floor(Math.random() * BOT_NAMES.length)],
+    isBot: true,
+    botType: type,
+    skill
+  };
+}
+
+function attachBotHooksToRoom(room) {
+  room.onMatchCreate = (match) => {
+    match.onRoundStart = (round) => {
+      const botsInMatch = match.players.filter(p => p.isBot);
+      botsInMatch.forEach(b => {
+        setTimeout(() => {
+           if (!match.currentRound || match.currentRound.roundNumber !== round.roundNumber) return;
+           const isCorrect = Math.random() < b.skill;
+           let answer = round.correctAnswer;
+           if (!isCorrect && round.options.length > 1) {
+              const wrongOptions = round.options.filter(o => o !== round.correctAnswer);
+              answer = wrongOptions[Math.floor(Math.random() * wrongOptions.length)];
+           }
+           match.submitAnswer(b.id, answer);
+        }, 1500 + Math.random() * 4000); // Wait 1.5 - 5.5 detik sebelum menjawab
+      });
+    };
+  };
+}
+
+function joinBotToRoom(room) {
+  if (room.isFull()) return;
+  const bot = createBot('joiner');
+  const player = room.addPlayer(bot.id, bot.name);
+  if (!player) return;
+  player.isBot = true;
+  player.skill = bot.skill;
+  player.botType = bot.botType;
+  player.ready = true;
+  console.log(`[bot] ${bot.name} (tipe: ${bot.botType}) otomatis bergabung ke room ${room.code}`);
+  room.broadcastState();
+}
+
+function createBotRoom() {
+  const bot = createBot('hoster');
+  const code = generateRoomCode();
+  const mode = Math.random() > 0.5 ? '1v1' : '2v2';
+  const levels = ['n5', 'n4', 'n3'];
+  const level = levels[Math.floor(Math.random() * levels.length)];
+  const questions = loadQuestions(level);
+  
+  const room = new Room(code, mode, level, io, questions);
+  room.onGameFinish = (winner, finalPlayers) => {
+    if (winner !== 'draw') {
+       updateLeaderboard(winner, finalPlayers, level);
+    }
+    // Bot akan membubarkan room-nya setelah match berakhir (delay 5 detik)
+    setTimeout(() => {
+       const botsInRoom = room.players.filter(p => p.isBot);
+       botsInRoom.forEach(b => room.removePlayer(b.id, { reason: 'bot_leave' }));
+       if (room.isEmpty()) rooms.delete(code);
+    }, 5000);
+  };
+  
+  attachBotHooksToRoom(room);
+
+  rooms.set(code, room);
+  const player = room.addPlayer(bot.id, bot.name);
+  player.isBot = true;
+  player.skill = bot.skill;
+  player.botType = bot.botType;
+  player.ready = true;
+  
+  console.log(`[bot] ${bot.name} (tipe: ${bot.botType}) membuat room baru ${room.code}`);
+  room.broadcastState();
+}
+
+let lastRoomActivity = Date.now();
+// Jalankan pengecekan bot lebih cepat, setiap 3 detik
+setInterval(() => {
+  const now = Date.now();
+  let hasOpenRoom = false;
+  let activeBotsCount = 0;
+  
+  for (const room of rooms.values()) {
+    activeBotsCount += room.players.filter(p => p.isBot).length;
+    
+    if (room.status === 'lobby' && !room.isFull()) {
+      hasOpenRoom = true;
+      if (now - room.createdAt > 20000 && activeBotsCount < 4) {
+        // Jika room menganggur > 20 detik dan limit bot belum tercapai (Maks 4 bot di seluruh server)
+        joinBotToRoom(room);
+        room.createdAt = now; // Reset timer agar tidak kebanjiran bot sekaligus
+      }
+    }
+    
+    // Jika bot adalah host dan room sudah bisa dimulai, paksa bot memulai
+    if (room.status === 'lobby' && room.canStart()) {
+      const host = room.players.find(p => p.host);
+      if (host && host.isBot) {
+        room.startMatch();
+        room.broadcastState();
+      }
+    }
+  }
+
+  if (hasOpenRoom) {
+    lastRoomActivity = now;
+  } else {
+    // Jika tidak ada room terbuka sama sekali selama 45 detik
+    if (now - lastRoomActivity > 45000 && activeBotsCount < 4) {
+      createBotRoom();
+      lastRoomActivity = now;
+    }
+  }
+}, 3000);
+
+function findRoomByPlayerName(playerName) {
+  if (!playerName) return null;
+  for (const room of rooms.values()) {
+    const player = room.players.find(p => p.name === playerName);
+    if (player) return room;
+  }
+  return null;
+}
 
 function generateRoomCode() {
   const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
@@ -75,12 +230,33 @@ io.on('connection', (socket) => {
 
   socket.on('room:create', ({ mode, playerName, level }, cb) => {
     try {
+      const existingRoom = findRoomByPlayerName(playerName);
+      if (existingRoom) {
+        // Return existing room if they are already in one
+        const player = existingRoom.players.find(p => p.name === playerName);
+        player.id = socket.id; // Update socket id
+        currentRoom = existingRoom;
+        socket.join(existingRoom.code);
+        cb && cb({ ok: true, roomCode: existingRoom.code, roomMode: existingRoom.mode, player: { id: socket.id, ...player } });
+        existingRoom.broadcastState();
+        return;
+      }
+
       if (!['1v1', '2v2'].includes(mode)) {
         return cb && cb({ ok: false, error: 'Mode tidak valid' });
       }
       const code = generateRoomCode();
       const questions = loadQuestions(level);
       const room = new Room(code, mode, level, io, questions);
+      room.onGameFinish = (winner, finalPlayers) => {
+        if (winner !== 'draw') {
+           updateLeaderboard(winner, finalPlayers, level);
+        }
+      };
+      
+      // Tambahkan hook bot agar jika nanti ada bot masuk, dia bisa berpartisipasi
+      attachBotHooksToRoom(room);
+
       rooms.set(code, room);
 
       const player = room.addPlayer(socket.id, playerName);
@@ -98,13 +274,34 @@ io.on('connection', (socket) => {
 
   socket.on('room:join', ({ roomCode, playerName }, cb) => {
     try {
+      const existingRoom = findRoomByPlayerName(playerName);
       const code = (roomCode || '').toUpperCase().trim();
+      
+      if (existingRoom) {
+        if (existingRoom.code === code) {
+          // Reclaim
+          const player = existingRoom.players.find(p => p.name === playerName);
+          player.id = socket.id;
+          currentRoom = existingRoom;
+          socket.join(existingRoom.code);
+          cb && cb({ ok: true, roomCode: existingRoom.code, roomMode: existingRoom.mode, player: { id: socket.id, ...player } });
+          existingRoom.broadcastState();
+          return;
+        } else {
+          return cb && cb({ ok: false, error: 'Kamu sudah berada di room lain. Silakan keluar dulu.' });
+        }
+      }
+
       const room = rooms.get(code);
       if (!room) return cb && cb({ ok: false, error: 'Room tidak ditemukan' });
       if (room.status !== 'lobby') return cb && cb({ ok: false, error: 'Room sudah mulai' });
       if (room.isFull()) return cb && cb({ ok: false, error: 'Room penuh' });
 
       const player = room.addPlayer(socket.id, playerName);
+      if (!player) {
+         return cb && cb({ ok: false, error: 'Room penuh' });
+      }
+
       currentRoom = room;
       socket.join(code);
 
@@ -122,6 +319,12 @@ io.on('connection', (socket) => {
     const result = currentRoom.toggleReadyWithResult(socket.id);
     if (!result.ok) return cb && cb(result);
     cb && cb({ ok: true, ready: result.ready });
+  });
+
+  socket.on('room:switchTeam', (_payload, cb) => {
+    if (!currentRoom) return cb && cb({ ok: false, error: 'Tidak di room' });
+    const result = currentRoom.switchTeam(socket.id);
+    cb && cb(result);
   });
 
   socket.on('match:start', (_payload, cb) => {
