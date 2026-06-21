@@ -180,6 +180,28 @@ io.on('connection', (socket) => {
     }
   });
 
+  socket.on('room:chat', ({ text }, cb) => {
+    try {
+      if (!currentRoom) return cb && cb({ ok: false, error: 'Tidak di room' });
+      const player = currentRoom.players.find(p => p.id === socket.id);
+      if (!player) return cb && cb({ ok: false, error: 'Player tidak valid' });
+
+      const cleanText = (text || '').trim().slice(0, 100);
+      if (!cleanText) return cb && cb({ ok: false, error: 'Pesan kosong' });
+
+      io.to(currentRoom.code).emit('room:chat', {
+        playerId: socket.id,
+        name: player.name,
+        text: cleanText,
+        time: Date.now()
+      });
+      cb && cb({ ok: true });
+    } catch (err) {
+      console.error('[room:chat] error', err);
+      cb && cb({ ok: false, error: 'Gagal mengirim chat' });
+    }
+  });
+
   socket.on('room:leave', (_payload, cb) => {
     if (currentRoom) {
       console.log('[room:leave] ' + socket.id + ' from ' + currentRoom.code);
