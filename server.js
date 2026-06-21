@@ -1,0 +1,210 @@
+/**
+ * Kanji Duel — Server Entry
+ * Express + Socket.IO server dengan room list auto-detect.
+ */
+
+const express = require('express');
+const http = require('http');
+const path = require('path');
+const { Server } = require('socket.io');
+
+const Room = require('./game/Room');
+const { loadQuestions } = require('./game/questionLoader');
+
+const PORT = process.env.PORT || 3000;
+const app = express();
+const server = http.createServer(app);
+const io = new Server(server, { 
+  cors: { 
+    origin: '*',
+    methods: ['GET', 'POST']
+  } 
+});
+
+app.use((_req, res, next) => {
+  res.set('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0');
+  next();
+});
+app.use(express.static(path.join(__dirname, 'public')));
+app.get('/', (_req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'index.html'));
+});
+
+app.get('/api/rooms', (_req, res) => {
+  res.json(getAvailableRooms());
+});
+
+function getAvailableRooms() {
+  const list = [];
+  for (const [code, room] of rooms.entries()) {
+    if (room.status === 'lobby' && !room.isFull()) {
+      list.push({
+        code,
+        mode: room.mode,
+        level: room.level,
+        hostName: (room.players.find(p => p.host) || {}).name || '?',
+        players: room.players.length,
+        capacity: room.capacity,
+      });
+    }
+  }
+  return list;
+}
+
+const rooms = new Map();
+
+function generateRoomCode() {
+  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+  let code;
+  do {
+    code = Array.from({ length: 6 }, () =>
+      chars.charAt(Math.floor(Math.random() * chars.length))
+    ).join('');
+  } while (rooms.has(code));
+  return code;
+}
+
+// Broadcast room list setiap 3 detik ke SEMUA socket
+setInterval(() => {
+  io.emit('room:list', getAvailableRooms());
+}, 3000);
+
+io.on('connection', (socket) => {
+  console.log('[connect] ' + socket.id);
+  let currentRoom = null;
+
+  socket.on('room:create', ({ mode, playerName, level }, cb) => {
+    try {
+      if (!['1v1', '2v2'].includes(mode)) {
+        return cb && cb({ ok: false, error: 'Mode tidak valid' });
+      }
+      const code = generateRoomCode();
+      const questions = loadQuestions(level);
+      const room = new Room(code, mode, level, io, questions);
+      rooms.set(code, room);
+
+      const player = room.addPlayer(socket.id, playerName);
+      currentRoom = room;
+      socket.join(code);
+
+      console.log('[room:create] ' + code + ' mode=' + mode + ' level=' + level + ' host=' + player.name);
+      cb && cb({ ok: true, roomCode: code, roomMode: mode, player: { id: socket.id, ...player } });
+      room.broadcastState();
+    } catch (err) {
+      console.error('[room:create] error', err);
+      cb && cb({ ok: false, error: 'Gagal membuat room' });
+    }
+  });
+
+  socket.on('room:join', ({ roomCode, playerName }, cb) => {
+    try {
+      const code = (roomCode || '').toUpperCase().trim();
+      const room = rooms.get(code);
+      if (!room) return cb && cb({ ok: false, error: 'Room tidak ditemukan' });
+      if (room.status !== 'lobby') return cb && cb({ ok: false, error: 'Room sudah mulai' });
+      if (room.isFull()) return cb && cb({ ok: false, error: 'Room penuh' });
+
+      const player = room.addPlayer(socket.id, playerName);
+      currentRoom = room;
+      socket.join(code);
+
+      console.log('[room:join] ' + code + ' player=' + player.name);
+      cb && cb({ ok: true, roomCode: code, roomMode: room.mode, player: { id: socket.id, ...player } });
+      room.broadcastState();
+    } catch (err) {
+      console.error('[room:join] error', err);
+      cb && cb({ ok: false, error: 'Gagal join room' });
+    }
+  });
+
+  socket.on('room:toggleReady', (_payload, cb) => {
+    if (!currentRoom) return cb && cb({ ok: false, error: 'Tidak di room' });
+    const result = currentRoom.toggleReadyWithResult(socket.id);
+    if (!result.ok) return cb && cb(result);
+    cb && cb({ ok: true, ready: result.ready });
+  });
+
+  socket.on('match:start', (_payload, cb) => {
+    console.log('[match:start] from ' + socket.id);
+    if (!currentRoom) {
+      const err = { ok: false, error: 'Kamu belum masuk room. Coba refresh halaman.' };
+      socket.emit('error', { message: err.error });
+      return cb && cb(err);
+    }
+    if (!currentRoom.isHost(socket.id)) {
+      const err = { ok: false, error: 'Hanya host yang bisa memulai pertandingan' };
+      socket.emit('error', { message: err.error });
+      return cb && cb(err);
+    }
+    const started = currentRoom.startMatch();
+    if (!started) {
+      const reason = currentRoom.canStart() ? 'Tidak bisa memulai (coba lagi)' : 'Belum semua pemain siap';
+      const err = { ok: false, error: reason };
+      socket.emit('error', { message: reason });
+      return cb && cb(err);
+    }
+    console.log('[match:start] ✓ match started in ' + currentRoom.code);
+    cb && cb({ ok: true });
+  });
+
+  socket.on('round:answer', ({ answer }, cb) => {
+    if (currentRoom && currentRoom.match) {
+      const accepted = currentRoom.match.submitAnswer(socket.id, answer);
+      cb && cb({ ok: accepted });
+    } else {
+      cb && cb({ ok: false, error: 'Tidak ada ronde aktif' });
+    }
+  });
+
+  socket.on('room:kick', ({ playerId }, cb) => {
+    try {
+      if (!currentRoom) return cb && cb({ ok: false, error: 'Tidak di room' });
+      if (!currentRoom.isHost(socket.id)) return cb && cb({ ok: false, error: 'Hanya host yang bisa kick' });
+
+      const playerToKick = currentRoom.players.find(p => p.id === playerId);
+      if (!playerToKick) return cb && cb({ ok: false, error: 'Player tidak ditemukan' });
+      if (playerToKick.id === socket.id) return cb && cb({ ok: false, error: 'Tidak bisa kick diri sendiri' });
+
+      console.log('[room:kick] ' + playerId + ' by ' + socket.id);
+      
+      // Emit to the specific player so they handle leaving
+      io.to(playerId).emit('room:kicked');
+      
+      // We also forcefully remove them from the room logic immediately
+      currentRoom.removePlayer(playerId, { reason: 'kicked' });
+      
+      cb && cb({ ok: true });
+    } catch (err) {
+      console.error('[room:kick] error', err);
+      cb && cb({ ok: false, error: 'Gagal melakukan kick' });
+    }
+  });
+
+  socket.on('room:leave', (_payload, cb) => {
+    if (currentRoom) {
+      console.log('[room:leave] ' + socket.id + ' from ' + currentRoom.code);
+      currentRoom.removePlayer(socket.id, { reason: 'leave' });
+      if (currentRoom.isEmpty()) rooms.delete(currentRoom.code);
+      socket.leave(currentRoom.code);
+      currentRoom = null;
+    }
+    cb && cb({ ok: true });
+  });
+
+  socket.on('disconnect', () => {
+    console.log('[disconnect] ' + socket.id);
+    if (currentRoom) {
+      currentRoom.removePlayer(socket.id, { reason: 'disconnect' });
+      if (currentRoom.isEmpty()) rooms.delete(currentRoom.code);
+    }
+  });
+});
+
+server.listen(PORT, () => {
+  console.log('');
+  console.log('╭──────────────────────────────────────────╮');
+  console.log('│  🏯 Kanji Duel — Server running          │');
+  console.log('│  ➜  http://localhost:' + PORT + '                 │');
+  console.log('╰──────────────────────────────────────────╯');
+  console.log('');
+});

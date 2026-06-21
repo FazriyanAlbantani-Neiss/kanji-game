@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html lang="id">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+    <meta name="theme-color" content="#21242e" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="mobile-web-app-capable" content="yes" />
+
+    <title>Kanji Duel — Quiz Battle Kanji Jepang</title>
+    <meta name="description" content="Multiplayer real-time kanji duel dengan Nintendo 2001 chrome style." />
+
+    <!-- Manifest + Icon -->
+    <link rel="manifest" href="./manifest.json" />
+    <link rel="icon" type="image/svg+xml" href="./icons/icon-192.svg" />
+    <link rel="apple-touch-icon" href="./icons/icon-192.svg" />
+
+    <!-- Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@500;700;900&display=swap" rel="stylesheet" />
+
+    <!-- Nintendo 2001 Chrome Design (mobile-first) -->
+    <link rel="stylesheet" href="./css/nintendo.css?v=3" />
+
+    <!-- Unregister SW lama + clear caches -->
+    <script>
+      if ('serviceWorker' in navigator) {
+        navigator.serviceWorker.getRegistrations().then(function(regs) {
+          regs.forEach(function(reg) { reg.unregister(); });
+        });
+      }
+      if ('caches' in window) {
+        caches.keys().then(function(keys) {
+          keys.forEach(function(k) { caches.delete(k); });
+        });
+      }
+    </script>
+  </head>
+  <body style="min-height: 100vh; display: flex; flex-direction: column;">
+    <!-- Background Watermark -->
+    <div style="position: fixed; top: 0; left: 0; right: 0; bottom: 0; z-index: -1; display: flex; align-items: center; justify-content: center; opacity: 0.15; pointer-events: none; overflow: hidden; background: var(--n-carbon, #21242e);">
+      <div style="font-weight: 900; font-size: 15vw; font-style: italic; text-transform: uppercase; letter-spacing: -2px; color: #000; font-family: 'Noto Sans JP', sans-serif; white-space: nowrap; transform: rotate(-15deg); user-select: none;">
+        IKUZE JAPAN
+      </div>
+    </div>
+
+    <div id="app" style="flex: 1; display: flex; flex-direction: column;"></div>
+
+    <!-- Maintenance Overlay -->
+    <div id="maintenance-overlay" style="display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(33, 36, 46, 0.95); z-index: 99999; flex-direction: column; align-items: center; justify-content: center; color: #f0f0f0; text-align: center; padding: 24px; backdrop-filter: blur(5px);">
+      <div style="font-size: 64px; margin-bottom: 16px;">🔌</div>
+      <div style="background: var(--n-primary, #e60012); color: white; padding: 4px 12px; font-weight: 900; letter-spacing: 1px; text-transform: uppercase; font-size: 12px; margin-bottom: 16px; border: 2px solid #000;">CONNECTION LOST</div>
+      <h2 style="font-family: 'Noto Sans JP', sans-serif; font-weight: 900; margin-bottom: 8px; text-transform: uppercase; letter-spacing: 1px; font-size: 24px; text-shadow: 2px 2px 0px #000;">Server Sedang Maintenance</h2>
+      <p style="font-size: 14px; opacity: 0.9; max-width: 300px; line-height: 1.5; text-shadow: 1px 1px 0px #000;">Koneksi ke backend terputus.<br>Game akan dilanjutkan secara otomatis jika server kembali online.</p>
+      
+      <!-- Indikator Loading -->
+      <div id="maintenance-spinner" style="margin-top: 32px; width: 32px; height: 32px; border: 4px solid rgba(255,255,255,0.2); border-top-color: #fff; border-radius: 50%; animation: n-spin 1s linear infinite;"></div>
+      
+      <!-- Tombol Refresh Manual (Berguna jika URL Cloudflare berubah dan butuh reload) -->
+      <button onclick="window.location.reload()" style="margin-top: 24px; padding: 8px 24px; font-family: 'Noto Sans JP', sans-serif; font-weight: 700; font-size: 12px; background: var(--n-carbon, #21242e); color: white; border: 2px solid var(--n-canvas-soft, #9fbee7); cursor: pointer; text-transform: uppercase; letter-spacing: 1px; border-radius: 4px;">Muat Ulang Halaman</button>
+
+      <!-- Debug Error Teks (Akan muncul jika ada error koneksi spesifik) -->
+      <p id="debug-error-msg" style="margin-top: 16px; font-size: 11px; color: #ff8888; font-family: monospace; max-width: 300px; word-wrap: break-word;"></p>
+    </div>
+
+    <style>
+      @keyframes n-spin { 100% { transform: rotate(360deg); } }
+    </style>
+
+    <!-- Gunakan CDN untuk Socket.io client agar bisa connect lintas server -->
+    <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
+
+    <script src="./js/ui.js?v=15"></script>
+    <script src="./js/audio.js?v=15"></script>
+    <script src="./js/views.js?v=15"></script>
+    <script src="./js/client.js?v=15"></script>
+  </body>
+</html>

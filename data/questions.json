@@ -1,0 +1,152 @@
+[
+  {
+    "kanji": "日",
+    "answer": "Matahari / Hari",
+    "wrong": ["Bulan", "Bintang"]
+  },
+  {
+    "kanji": "月",
+    "answer": "Bulan",
+    "wrong": ["Matahari", "Tahun"]
+  },
+  {
+    "kanji": "水",
+    "answer": "Air",
+    "wrong": ["Api", "Tanah"]
+  },
+  {
+    "kanji": "火",
+    "answer": "Api",
+    "wrong": ["Air", "Angin"]
+  },
+  {
+    "kanji": "木",
+    "answer": "Pohon",
+    "wrong": ["Batu", "Rumput"]
+  },
+  {
+    "kanji": "山",
+    "answer": "Gunung",
+    "wrong": ["Sungai", "Laut"]
+  },
+  {
+    "kanji": "川",
+    "answer": "Sungai",
+    "wrong": ["Gunung", "Danau"]
+  },
+  {
+    "kanji": "人",
+    "answer": "Orang",
+    "wrong": ["Hewan", "Tumbuhan"]
+  },
+  {
+    "kanji": "大",
+    "answer": "Besar",
+    "wrong": ["Kecil", "Tengah"]
+  },
+  {
+    "kanji": "小",
+    "answer": "Kecil",
+    "wrong": ["Besar", "Panjang"]
+  },
+  {
+    "kanji": "中",
+    "answer": "Tengah",
+    "wrong": ["Atas", "Bawah"]
+  },
+  {
+    "kanji": "上",
+    "answer": "Atas",
+    "wrong": ["Bawah", "Samping"]
+  },
+  {
+    "kanji": "下",
+    "answer": "Bawah",
+    "wrong": ["Atas", "Depan"]
+  },
+  {
+    "kanji": "一",
+    "answer": "Satu",
+    "wrong": ["Dua", "Tiga"]
+  },
+  {
+    "kanji": "二",
+    "answer": "Dua",
+    "wrong": ["Satu", "Empat"]
+  },
+  {
+    "kanji": "三",
+    "answer": "Tiga",
+    "wrong": ["Dua", "Lima"]
+  },
+  {
+    "kanji": "本",
+    "answer": "Buku / Asal",
+    "wrong": ["Pensil", "Kertas"]
+  },
+  {
+    "kanji": "学",
+    "answer": "Belajar",
+    "wrong": ["Mengajar", "Ujian"]
+  },
+  {
+    "kanji": "生",
+    "answer": "Hidup / Lahir",
+    "wrong": ["Mati", "Tidur"]
+  },
+  {
+    "kanji": "雨",
+    "answer": "Hujan",
+    "wrong": ["Salju", "Angin"]
+  },
+  {
+    "kanji": "花",
+    "answer": "Bunga",
+    "wrong": ["Daun", "Akar"]
+  },
+  {
+    "kanji": "海",
+    "answer": "Laut",
+    "wrong": ["Sungai", "Danau"]
+  },
+  {
+    "kanji": "空",
+    "answer": "Langit",
+    "wrong": ["Tanah", "Bumi"]
+  },
+  {
+    "kanji": "星",
+    "answer": "Bintang",
+    "wrong": ["Bulan", "Matahari"]
+  },
+  {
+    "kanji": "愛",
+    "answer": "Cinta",
+    "wrong": ["Benci", "Marah"]
+  },
+  {
+    "kanji": "心",
+    "answer": "Hati",
+    "wrong": ["Otak", "Tangan"]
+  },
+  {
+    "kanji": "金",
+    "answer": "Emas / Uang",
+    "wrong": ["Perak", "Besi"]
+  },
+  {
+    "kanji": "土",
+    "answer": "Tanah",
+    "wrong": ["Air", "Pasir"]
+  },
+  {
+    "kanji": "風",
+    "answer": "Angin",
+    "wrong": ["Hujan", "Badai"]
+  },
+  {
+    "kanji": "雪",
+    "answer": "Salju",
+    "wrong": ["Hujan", "Es"]
+  }
+]
